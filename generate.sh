@@ -66,8 +66,15 @@ echo "
 }
 " > "$format"
 
-echo pandoc $input -H "$format" -V geometry:margin="${marginInches}in" --latex-engine=xelatex -o "$out"
+echo pandoc $input -H "$format" -V geometry:margin="${marginInches}in" -o "$tmpDir/tmp.tex"
 echo "======================================="
-pandoc $input -H "$format" -V geometry:margin="${marginInches}in" --latex-engine=xelatex -o "$out"
+pandoc $input -H "$format" -V geometry:margin="${marginInches}in" -o "$tmpDir/tmp.tex"
+
+cd "$tmpDir"
+lualatex tmp.tex
+#xelatex tmp.tex
+#pdflatex tmp.tex
+mv tmp.pdf "$out"
+cd -
 rm "$format"
 rm -r "$tmpDir"
