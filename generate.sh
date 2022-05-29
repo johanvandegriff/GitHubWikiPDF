@@ -4,6 +4,9 @@ wiki="${1%/}" #trim trailing slash if any
 #wiki=`echo "$1" | tr -s /`
 out="$2"
 
+wiki=`readlink -f "$wiki"`
+out=`readlink -f "$out"`
+
 if [[ ! -d "$wiki" ]]
 then
   echo "\"$wiki\" does not exist!"
@@ -16,7 +19,8 @@ then
   exit
 fi
 
-tmpDir="$wiki/tmp"
+#tmpDir="$wiki/tmp"
+tmpDir=`mktemp -d`
 orderFile="$wiki/order.txt"
 format="format.tex"
 marginInches="0.25"
@@ -30,14 +34,6 @@ fi
 
 order=`cat "$wiki/order.txt"`
 
-if [[ -d "$tmpDir" ]]
-then
-  echo "\"$tmpDir\" exists!"
-  exit
-fi
-
-mkdir "$tmpDir"
-
 input=""
 for file in $order
 do
@@ -46,15 +42,33 @@ do
   echo "# $file" | tr '-' ' ' | tr -d '_' | sed 's/.md$//' > "$titled"
   echo >> "$titled"
 #  cat "$wiki/$file" >> "$titled"
-  cat "$wiki/$file" \
-  | perl -i -pe 's/\[\[([^\]\[]*)\]\]/[\1]/g' \
-  | perl -i -pe 's/\[([^\]\[]*)\|([^\]\[]*)\]/\1 [\2]/g' \
+
+#download images by searching for "?raw=true" and replace the reference with a local file
+  cat "$wiki/$file" <(echo) | while IFS= read -r line; do
+    if echo "$line" | grep '\?raw\=true' > /dev/null; then
+      link=`echo "$line" | sed 's,\!\[.*\](\(.*\)?raw\=true)$,\1,g'` #get the link
+      basename=`basename "$link"`
+      #wget "https://github.com/FTC7393/EVLib/blob/master/images/attach.png?raw=true" -O attach.png
+      wget "${link}?raw=true" -O "$tmpDir/$basename"
+      line2=`echo "$line" | sed 's,\]\(.*\),],g'` #remove the link
+      line2="${line2}($tmpDir/$basename)"
+      echo "$line2"
+    else
+      echo "$line"
+    fi
+  done \
+  | perl -pe 's/\[\[([^\]\[]*)\]\]/[\1]/g' \
+  | perl -pe 's/\[([^\]\[]*)\|([^\]\[]*)\]/\1 [\2]/g' \
   | fold -w "$codeBlockMaxChars" -s \
   >> "$titled"
+
   echo >> "$titled"
   echo >> "$titled"
+
   input="$input $titled"
 done
+
+cd "$tmpDir"
 
 echo "
 \hypersetup{
@@ -70,11 +84,10 @@ echo pandoc $input -H "$format" -V geometry:margin="${marginInches}in" -o "$tmpD
 echo "======================================="
 pandoc $input -H "$format" -V geometry:margin="${marginInches}in" -o "$tmpDir/tmp.tex"
 
-cd "$tmpDir"
 lualatex tmp.tex
 #xelatex tmp.tex
 #pdflatex tmp.tex
 mv tmp.pdf "$out"
+#mv tmp.tex "$out.tex"
 cd -
-rm "$format"
 rm -r "$tmpDir"
